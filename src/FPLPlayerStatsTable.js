@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { EyeOff, Calculator, RefreshCw } from 'lucide-react';
 
+const API_BASE_URL = 'https://fantasy.premierleague.com/api';
+const CORS_PROXY = 'https://cors-anywhere.herokuapp.com/';
+
 export default function FPLPlayerStatsTable() {
   const [data, setData] = useState([]);
   const [allColumns, setAllColumns] = useState([]);
@@ -13,21 +16,24 @@ export default function FPLPlayerStatsTable() {
   const [newColumnFormula, setNewColumnFormula] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [useCorsProxy, setUseCorsProxy] = useState(false);
 
   useEffect(() => {
     fetchPlayerData();
-  }, []);
+  }, [useCorsProxy]);
 
   const fetchPlayerData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const bootstrapStaticResponse = await axios.get('http://localhost:3001/api/bootstrap-static');
+      const baseUrl = useCorsProxy ? `${CORS_PROXY}${API_BASE_URL}` : API_BASE_URL;
+      const bootstrapStaticResponse = await axios.get(`${baseUrl}/bootstrap-static/`);
       const allPlayers = bootstrapStaticResponse.data.elements;
 
-      const processedData = await Promise.all(allPlayers.map(async (player) => {
+      // Fetch data for first 20 players only (for demonstration purposes)
+      const processedData = await Promise.all(allPlayers.slice(0, 20).map(async (player) => {
         try {
-          const playerResponse = await axios.get(`http://localhost:3001/api/element-summary/${player.id}`);
+          const playerResponse = await axios.get(`${baseUrl}/element-summary/${player.id}/`);
           const playerData = playerResponse.data;
 
           const totalStats = playerData.history.reduce((acc, gw) => {
@@ -44,7 +50,7 @@ export default function FPLPlayerStatsTable() {
 
           return {
             player_name: `${player.first_name} ${player.second_name}`,
-            ...player,
+            id: player.id,
             team_name: team ? team.name : 'Unknown',
             position: position ? position.singular_name : 'Unknown',
             total_points: totalStats.total_points || 0,
@@ -54,6 +60,8 @@ export default function FPLPlayerStatsTable() {
             clean_sheets: totalStats.clean_sheets || 0,
             games_played: playerData.history.length,
             upcoming_fixtures: playerData.fixtures.length,
+            form: parseFloat(player.form) || 0,
+            price: player.now_cost / 10,
           };
         } catch (error) {
           console.error(`Error fetching data for player ${player.id}:`, error);
@@ -67,12 +75,15 @@ export default function FPLPlayerStatsTable() {
       if (validData.length > 0) {
         const columns = Object.keys(validData[0]);
         setAllColumns(columns);
-        // Set initial visible columns: player_name and a few important stats
-        setVisibleColumns(['player_name', 'team_name', 'position', 'total_points', 'minutes', 'goals_scored', 'assists', 'clean_sheets']);
+        setVisibleColumns(['player_name', 'team_name', 'position', 'total_points', 'price', 'form', 'minutes', 'goals_scored', 'assists']);
       }
     } catch (error) {
       console.error('Error fetching player data:', error);
-      setError('Failed to fetch player data. Please try again later.');
+      if (error.message.includes('Network Error') || error.message.includes('CORS')) {
+        setError('CORS error: Unable to fetch data directly. Try using a CORS proxy or browser extension.');
+      } else {
+        setError('Failed to fetch player data. Please try again later.');
+      }
     }
     setLoading(false);
   };
@@ -141,11 +152,21 @@ export default function FPLPlayerStatsTable() {
   if (error) {
     return (
       <div className="text-red-500 text-center py-10">
-        {error}
-        <br />
-        <button onClick={fetchPlayerData} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded">
-          Retry
-        </button>
+        <p>{error}</p>
+        <div className="mt-4">
+          <button 
+            onClick={() => setUseCorsProxy(!useCorsProxy)} 
+            className="bg-blue-600 text-white px-4 py-2 rounded mr-2"
+          >
+            {useCorsProxy ? "Disable CORS Proxy" : "Try CORS Proxy"}
+          </button>
+          <button onClick={fetchPlayerData} className="bg-green-600 text-white px-4 py-2 rounded">
+            Retry
+          </button>
+        </div>
+        <p className="mt-4 text-sm text-gray-300">
+          For development: Try using a CORS browser extension like "Allow CORS: Access-Control-Allow-Origin"
+        </p>
       </div>
     );
   }
