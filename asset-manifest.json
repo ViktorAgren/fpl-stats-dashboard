@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/fpl-stats-dashboard/static/css/main.ef0c0c0a.css",
-    "main.js": "/fpl-stats-dashboard/static/js/main.5c06558b.js",
+    "main.css": "/fpl-stats-dashboard/static/css/main.d459e41a.css",
+    "main.js": "/fpl-stats-dashboard/static/js/main.1eb870c7.js",
     "static/js/453.b831d08b.chunk.js": "/fpl-stats-dashboard/static/js/453.b831d08b.chunk.js",
     "index.html": "/fpl-stats-dashboard/index.html",
-    "main.ef0c0c0a.css.map": "/fpl-stats-dashboard/static/css/main.ef0c0c0a.css.map",
-    "main.5c06558b.js.map": "/fpl-stats-dashboard/static/js/main.5c06558b.js.map",
+    "main.d459e41a.css.map": "/fpl-stats-dashboard/static/css/main.d459e41a.css.map",
+    "main.1eb870c7.js.map": "/fpl-stats-dashboard/static/js/main.1eb870c7.js.map",
     "453.b831d08b.chunk.js.map": "/fpl-stats-dashboard/static/js/453.b831d08b.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.ef0c0c0a.css",
-    "static/js/main.5c06558b.js"
+    "static/css/main.d459e41a.css",
+    "static/js/main.1eb870c7.js"
   ]
 }
