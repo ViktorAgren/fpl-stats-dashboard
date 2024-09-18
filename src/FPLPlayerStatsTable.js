@@ -3,7 +3,6 @@ import axios from 'axios';
 import { EyeOff, Calculator, RefreshCw } from 'lucide-react';
 
 const API_BASE_URL = 'https://fantasy.premierleague.com/api';
-const CORS_PROXY = 'https://cors-anywhere.herokuapp.com/';
 
 export default function FPLPlayerStatsTable() {
   const [data, setData] = useState([]);
@@ -16,19 +15,19 @@ export default function FPLPlayerStatsTable() {
   const [newColumnFormula, setNewColumnFormula] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [useCorsProxy, setUseCorsProxy] = useState(false);
   const [debugInfo, setDebugInfo] = useState('');
+  const [customProxyUrl, setCustomProxyUrl] = useState('');
 
   useEffect(() => {
     fetchPlayerData();
-  }, [useCorsProxy]);
+  }, []);
 
   const fetchPlayerData = async () => {
     setLoading(true);
     setError(null);
     setDebugInfo('');
     try {
-      const baseUrl = useCorsProxy ? `${CORS_PROXY}${API_BASE_URL}` : API_BASE_URL;
+      const baseUrl = customProxyUrl ? `${customProxyUrl}${API_BASE_URL}` : API_BASE_URL;
       setDebugInfo(prevInfo => prevInfo + `Fetching data from: ${baseUrl}\n`);
 
       const bootstrapStaticResponse = await axios.get(`${baseUrl}/bootstrap-static/`);
@@ -95,11 +94,7 @@ export default function FPLPlayerStatsTable() {
         setDebugInfo(prevInfo => prevInfo + `Response status: ${error.response.status}\n`);
         setDebugInfo(prevInfo => prevInfo + `Response headers: ${JSON.stringify(error.response.headers)}\n`);
       }
-      if (error.message.includes('Network Error') || error.message.includes('CORS')) {
-        setError('CORS error: Unable to fetch data directly. Try using a CORS proxy or browser extension.');
-      } else {
-        setError('Failed to fetch player data. Please check the debug information and try again.');
-      }
+      setError('Failed to fetch player data. Please check the debug information and try again.');
     }
     setLoading(false);
   };
@@ -170,19 +165,23 @@ export default function FPLPlayerStatsTable() {
       <div className="text-red-500 text-center py-10">
         <p>{error}</p>
         <div className="mt-4">
-          <button 
-            onClick={() => setUseCorsProxy(!useCorsProxy)} 
-            className="bg-blue-600 text-white px-4 py-2 rounded mr-2"
-          >
-            {useCorsProxy ? "Disable CORS Proxy" : "Try CORS Proxy"}
-          </button>
+          <p className="text-white mb-2">To access the data, you can:</p>
+          <ol className="text-white text-left list-decimal list-inside mb-4">
+            <li>Use a CORS browser extension (for development only)</li>
+            <li>Set up a local proxy server</li>
+            <li>Deploy this app with a backend that handles the API requests</li>
+          </ol>
+          <input
+            type="text"
+            value={customProxyUrl}
+            onChange={(e) => setCustomProxyUrl(e.target.value)}
+            placeholder="Enter custom proxy URL (optional)"
+            className="w-full bg-gray-700 text-white border border-gray-600 rounded px-2 py-1 mb-2"
+          />
           <button onClick={fetchPlayerData} className="bg-green-600 text-white px-4 py-2 rounded">
             Retry
           </button>
         </div>
-        <p className="mt-4 text-sm text-gray-300">
-          For development: Try using a CORS browser extension like "Allow CORS: Access-Control-Allow-Origin"
-        </p>
         <div className="mt-4 text-left bg-gray-800 p-4 rounded">
           <h3 className="text-white font-bold mb-2">Debug Information:</h3>
           <pre className="text-xs text-gray-300 whitespace-pre-wrap">{debugInfo}</pre>
