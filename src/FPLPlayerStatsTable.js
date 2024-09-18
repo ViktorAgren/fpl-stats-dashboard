@@ -17,6 +17,7 @@ export default function FPLPlayerStatsTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [useCorsProxy, setUseCorsProxy] = useState(false);
+  const [debugInfo, setDebugInfo] = useState('');
 
   useEffect(() => {
     fetchPlayerData();
@@ -25,15 +26,23 @@ export default function FPLPlayerStatsTable() {
   const fetchPlayerData = async () => {
     setLoading(true);
     setError(null);
+    setDebugInfo('');
     try {
       const baseUrl = useCorsProxy ? `${CORS_PROXY}${API_BASE_URL}` : API_BASE_URL;
-      const bootstrapStaticResponse = await axios.get(`${baseUrl}/bootstrap-static/`);
-      const allPlayers = bootstrapStaticResponse.data.elements;
+      setDebugInfo(prevInfo => prevInfo + `Fetching data from: ${baseUrl}\n`);
 
-      // Fetch data for first 20 players only (for demonstration purposes)
-      const processedData = await Promise.all(allPlayers.slice(0, 20).map(async (player) => {
+      const bootstrapStaticResponse = await axios.get(`${baseUrl}/bootstrap-static/`);
+      setDebugInfo(prevInfo => prevInfo + `Bootstrap static data fetched successfully.\n`);
+
+      const allPlayers = bootstrapStaticResponse.data.elements;
+      setDebugInfo(prevInfo => prevInfo + `Total players: ${allPlayers.length}\n`);
+
+      // Fetch data for first 5 players only (for quicker testing)
+      const processedData = await Promise.all(allPlayers.slice(0, 5).map(async (player) => {
         try {
           const playerResponse = await axios.get(`${baseUrl}/element-summary/${player.id}/`);
+          setDebugInfo(prevInfo => prevInfo + `Fetched data for player ${player.id}\n`);
+
           const playerData = playerResponse.data;
 
           const totalStats = playerData.history.reduce((acc, gw) => {
@@ -64,25 +73,32 @@ export default function FPLPlayerStatsTable() {
             price: player.now_cost / 10,
           };
         } catch (error) {
-          console.error(`Error fetching data for player ${player.id}:`, error);
+          setDebugInfo(prevInfo => prevInfo + `Error fetching data for player ${player.id}: ${error.message}\n`);
           return null;
         }
       }));
 
       const validData = processedData.filter(player => player !== null);
       setData(validData);
+      setDebugInfo(prevInfo => prevInfo + `Processed ${validData.length} players successfully.\n`);
 
       if (validData.length > 0) {
         const columns = Object.keys(validData[0]);
         setAllColumns(columns);
-        setVisibleColumns(['player_name', 'team_name', 'position', 'total_points', 'price', 'form', 'minutes', 'goals_scored', 'assists']);
+        setVisibleColumns(['player_name', 'team_name', 'position', 'total_points', 'price', 'form']);
       }
     } catch (error) {
       console.error('Error fetching player data:', error);
+      setDebugInfo(prevInfo => prevInfo + `Error: ${error.message}\nStack: ${error.stack}\n`);
+      if (error.response) {
+        setDebugInfo(prevInfo => prevInfo + `Response data: ${JSON.stringify(error.response.data)}\n`);
+        setDebugInfo(prevInfo => prevInfo + `Response status: ${error.response.status}\n`);
+        setDebugInfo(prevInfo => prevInfo + `Response headers: ${JSON.stringify(error.response.headers)}\n`);
+      }
       if (error.message.includes('Network Error') || error.message.includes('CORS')) {
         setError('CORS error: Unable to fetch data directly. Try using a CORS proxy or browser extension.');
       } else {
-        setError('Failed to fetch player data. Please try again later.');
+        setError('Failed to fetch player data. Please check the debug information and try again.');
       }
     }
     setLoading(false);
@@ -167,6 +183,10 @@ export default function FPLPlayerStatsTable() {
         <p className="mt-4 text-sm text-gray-300">
           For development: Try using a CORS browser extension like "Allow CORS: Access-Control-Allow-Origin"
         </p>
+        <div className="mt-4 text-left bg-gray-800 p-4 rounded">
+          <h3 className="text-white font-bold mb-2">Debug Information:</h3>
+          <pre className="text-xs text-gray-300 whitespace-pre-wrap">{debugInfo}</pre>
+        </div>
       </div>
     );
   }
