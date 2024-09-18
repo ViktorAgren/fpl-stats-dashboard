@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/fpl-stats-dashboard/static/css/main.52c512f0.css",
+    "main.js": "/fpl-stats-dashboard/static/js/main.c60b92d3.js",
+    "static/js/453.b831d08b.chunk.js": "/fpl-stats-dashboard/static/js/453.b831d08b.chunk.js",
+    "index.html": "/fpl-stats-dashboard/index.html",
+    "main.52c512f0.css.map": "/fpl-stats-dashboard/static/css/main.52c512f0.css.map",
+    "main.c60b92d3.js.map": "/fpl-stats-dashboard/static/js/main.c60b92d3.js.map",
+    "453.b831d08b.chunk.js.map": "/fpl-stats-dashboard/static/js/453.b831d08b.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.52c512f0.css",
+    "static/js/main.c60b92d3.js"
+  ]
+}
