@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { EyeOff, Calculator, RefreshCw } from 'lucide-react';
+import { EyeOff, Calculator, RefreshCw, Search, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function FPLPlayerStatsTable() {
   const [data, setData] = useState([]);
@@ -13,9 +13,34 @@ export default function FPLPlayerStatsTable() {
   const [newColumnFormula, setNewColumnFormula] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [columnSearch, setColumnSearch] = useState('');
+  const [showColumnDropdown, setShowColumnDropdown] = useState(false);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const dropdownRef = useRef(null);
+  const autocompleteRef = useRef(null);
+  const [columnWidths, setColumnWidths] = useState({});
+  const [advancedFilters, setAdvancedFilters] = useState({});
+  const tableRef = useRef(null);
+  const formulaInputRef = useRef(null);
 
   useEffect(() => {
     fetchPlayerData();
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowColumnDropdown(false);
+      }
+      if (autocompleteRef.current && !autocompleteRef.current.contains(event.target)) {
+        setShowAutocomplete(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   const fetchPlayerData = async () => {
@@ -67,8 +92,7 @@ export default function FPLPlayerStatsTable() {
       if (validData.length > 0) {
         const columns = Object.keys(validData[0]);
         setAllColumns(columns);
-        // Set initial visible columns: player_name and a few important stats
-        setVisibleColumns(['player_name', 'team_name', 'position', 'total_points', 'minutes', 'goals_scored', 'assists', 'clean_sheets']);
+        setVisibleColumns(['first_name', "second_name", 'team_name', 'position', 'total_points', 'minutes', 'goals_scored', 'assists', 'clean_sheets']);
       }
     } catch (error) {
       console.error('Error fetching player data:', error);
@@ -87,7 +111,7 @@ export default function FPLPlayerStatsTable() {
   };
 
   const handleFilter = (column, value) => {
-    setFilters({ ...filters, [column]: value });
+    setFilters(prev => ({ ...prev, [column]: value }));
   };
 
   const handleToggleColumn = (column) => {
@@ -117,6 +141,11 @@ export default function FPLPlayerStatsTable() {
     }
   };
 
+  const getFormulaAutocomplete = (formula) => {
+    const lastWord = formula.split(/[\s+\-*/()]+/).pop();
+    return allColumns.filter(column => column.toLowerCase().startsWith(lastWord.toLowerCase()));
+  };
+
   const filteredData = data.filter((row) => {
     return Object.keys(filters).every((column) => {
       const cellValue = row[column]?.toString().toLowerCase() ?? '';
@@ -125,14 +154,138 @@ export default function FPLPlayerStatsTable() {
     });
   });
 
+  const handleFormulaChange = (e) => {
+    const cursorPosition = e.target.selectionStart;
+    setNewColumnFormula(e.target.value);
+    setShowAutocomplete(true);
+    setTimeout(() => {
+      if (formulaInputRef.current) {
+        formulaInputRef.current.setSelectionRange(cursorPosition, cursorPosition);
+      }
+    }, 0);
+  };
+
+  const insertColumnName = (columnName) => {
+    if (formulaInputRef.current) {
+      const cursorPosition = formulaInputRef.current.selectionStart;
+      const textBeforeCursor = newColumnFormula.slice(0, cursorPosition);
+      const textAfterCursor = newColumnFormula.slice(cursorPosition);
+      const updatedFormula = `${textBeforeCursor}${columnName}${textAfterCursor}`;
+      setNewColumnFormula(updatedFormula);
+      setShowAutocomplete(false);
+      setTimeout(() => {
+        const newCursorPosition = cursorPosition + columnName.length;
+        formulaInputRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
+        formulaInputRef.current.focus();
+      }, 0);
+    }
+  };
+  
+  const handleAdvancedFilter = (column, type, value) => {
+    setAdvancedFilters(prev => ({
+      ...prev,
+      [column]: { ...prev[column], [type]: value }
+    }));
+  };
+
+  const applyFilters = useCallback((data) => {
+    return data.filter(row => {
+      return Object.entries(filters).every(([column, filterValue]) => {
+        if (!filterValue) return true;
+        
+        const cellValue = row[column];
+        const numericValue = parseFloat(cellValue);
+  
+        if (filterValue.startsWith('>')) {
+          const threshold = parseFloat(filterValue.slice(1));
+          return !isNaN(numericValue) && numericValue > threshold;
+        } else if (filterValue.startsWith('<')) {
+          const threshold = parseFloat(filterValue.slice(1));
+          return !isNaN(numericValue) && numericValue < threshold;
+        } else if (filterValue.startsWith('=')) {
+          const target = filterValue.slice(1);
+          return cellValue == target; // Using == for loose equality
+        } else {
+          return String(cellValue).toLowerCase().includes(filterValue.toLowerCase());
+        }
+      });
+    });
+  }, [filters]);
+
+  const sortedAndFilteredData = useCallback(() => {
+    let result = applyFilters(data);
+    if (sortColumn) {
+      result.sort((a, b) => {
+        if (a[sortColumn] < b[sortColumn]) return sortDirection === 'asc' ? -1 : 1;
+        if (a[sortColumn] > b[sortColumn]) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    return result;
+  }, [data, sortColumn, sortDirection, applyFilters]);
+
+  const filteredColumns = allColumns.filter(column => 
+    column.toLowerCase().includes(columnSearch.toLowerCase())
+  );
+
+  const handleColumnResize = useCallback((index, newWidth) => {
+    setColumnWidths(prev => ({ ...prev, [visibleColumns[index]]: Math.max(newWidth, 50) }));
+  }, [visibleColumns]);
+  
+
   const sortedData = [...filteredData].sort((a, b) => {
     if (!sortColumn) return 0;
+    
     const aValue = a[sortColumn];
     const bValue = b[sortColumn];
-    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
+
+    // Helper function to check if a value is a valid number (including decimals)
+    const isNumeric = (value) => {
+      if (typeof value === 'number') return true;
+      if (typeof value !== 'string') return false;
+      return !isNaN(parseFloat(value)) && isFinite(value);
+    };
+
+    // Convert to numbers if possible
+    const aNum = isNumeric(aValue) ? parseFloat(aValue) : aValue;
+    const bNum = isNumeric(bValue) ? parseFloat(bValue) : bValue;
+
+    if (isNumeric(aNum) && isNumeric(bNum)) {
+      // If both values are numeric, compare them as numbers
+      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+    } else {
+      // If either value is not numeric, compare as strings
+      const aStr = String(aValue).toLowerCase();
+      const bStr = String(bValue).toLowerCase();
+      return sortDirection === 'asc' 
+        ? aStr.localeCompare(bStr, undefined, {numeric: true, sensitivity: 'base'})
+        : bStr.localeCompare(aStr, undefined, {numeric: true, sensitivity: 'base'});
+    }
   });
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (tableRef.current) {
+        const tableWidth = tableRef.current.offsetWidth;
+        const totalColumnWidth = visibleColumns.reduce((sum, col) => sum + (columnWidths[col] || 150), 0);
+        if (totalColumnWidth < tableWidth) {
+          const extraWidth = tableWidth - totalColumnWidth;
+          const widthPerColumn = Math.floor(extraWidth / visibleColumns.length);
+          setColumnWidths(prev => {
+            const newWidths = { ...prev };
+            visibleColumns.forEach(col => {
+              newWidths[col] = (newWidths[col] || 150) + widthPerColumn;
+            });
+            return newWidths;
+          });
+        }
+      }
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [visibleColumns, columnWidths]);
 
   if (loading) {
     return <div className="text-white text-center py-10">Loading player data...</div>;
@@ -153,19 +306,42 @@ export default function FPLPlayerStatsTable() {
   return (
     <div className="p-4 bg-gray-900 text-gray-300">
       <div className="mb-4 flex flex-wrap gap-4 items-center">
-        <div className="flex-grow">
-          <select
-            onChange={(e) => handleToggleColumn(e.target.value)}
-            value=""
-            className="bg-gray-800 text-gray-300 border border-gray-700 rounded px-2 py-1"
+        <div className="flex-grow relative" ref={dropdownRef}>
+          <button
+            onClick={() => setShowColumnDropdown(!showColumnDropdown)}
+            className="bg-gray-800 text-gray-300 border border-gray-700 rounded px-2 py-1 w-full text-left flex items-center justify-between"
           >
-            <option value="" disabled>Show/Hide Columns</option>
-            {allColumns.map(column => (
-              <option key={column} value={column}>
-                {visibleColumns.includes(column) ? `Hide ${column}` : `Show ${column}`}
-              </option>
-            ))}
-          </select>
+            <span>Show/Hide Columns</span>
+            <Search size={16} />
+          </button>
+          {showColumnDropdown && (
+            <div className="absolute z-10 mt-1 w-full bg-gray-800 border border-gray-700 rounded shadow-lg">
+              <input
+                type="text"
+                value={columnSearch}
+                onChange={(e) => setColumnSearch(e.target.value)}
+                placeholder="Search columns..."
+                className="w-full bg-gray-700 text-gray-300 border-b border-gray-600 rounded-t px-2 py-1"
+              />
+              <div className="max-h-60 overflow-y-auto">
+                {filteredColumns.map(column => (
+                  <div
+                    key={column}
+                    className="px-2 py-1 hover:bg-gray-700 cursor-pointer flex items-center"
+                    onClick={() => handleToggleColumn(column)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={visibleColumns.includes(column)}
+                      onChange={() => {}}
+                      className="mr-2"
+                    />
+                    {column}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <input
@@ -175,13 +351,30 @@ export default function FPLPlayerStatsTable() {
             placeholder="New column name"
             className="bg-gray-800 text-gray-300 border border-gray-700 rounded px-2 py-1"
           />
-          <input
-            type="text"
-            value={newColumnFormula}
-            onChange={(e) => setNewColumnFormula(e.target.value)}
-            placeholder="Column formula (e.g., goals_scored * 4)"
-            className="bg-gray-800 text-gray-300 border border-gray-700 rounded px-2 py-1"
-          />
+          <div className="relative" ref={autocompleteRef}>
+            <input
+              ref={formulaInputRef}
+              type="text"
+              value={newColumnFormula}
+              onChange={handleFormulaChange}
+              onFocus={() => setShowAutocomplete(true)}
+              placeholder="Column formula (e.g., goals_scored * 4)"
+              className="bg-gray-800 text-gray-300 border border-gray-700 rounded px-2 py-1"
+            />
+            {showAutocomplete && (
+              <div className="absolute z-10 mt-1 w-full bg-gray-800 border border-gray-700 rounded shadow-lg max-h-40 overflow-y-auto">
+                {getFormulaAutocomplete(newColumnFormula).map(column => (
+                  <div
+                    key={column}
+                    className="px-2 py-1 hover:bg-gray-700 cursor-pointer"
+                    onClick={() => insertColumnName(column)}
+                  >
+                    {column}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <button onClick={handleCreateColumn} className="bg-green-600 text-white px-2 py-1 rounded flex items-center">
             <Calculator size={16} className="mr-1" /> Create Column
           </button>
@@ -190,28 +383,45 @@ export default function FPLPlayerStatsTable() {
           <RefreshCw size={16} className="mr-1" /> Refresh Data
         </button>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" ref={tableRef}>
         <table className="min-w-full border-collapse">
           <thead>
             <tr>
-              {visibleColumns.map((column) => (
+              {visibleColumns.map((column, index) => (
                 <th
                   key={column}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer bg-gray-800 border-b border-gray-700"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer bg-gray-800 border-b border-gray-700 relative"
+                  style={{ minWidth: '100px', width: columnWidths[column] || 150 }}
                 >
                   <div className="flex items-center justify-between">
-                    <span onClick={() => handleSort(column)}>
+                    <span onClick={() => handleSort(column)} className="flex items-center">
                       {column}
                       {sortColumn === column && (
-                        <span className="ml-1">
-                          {sortDirection === 'asc' ? '▲' : '▼'}
-                        </span>
+                        sortDirection === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />
                       )}
                     </span>
                     <button onClick={() => handleToggleColumn(column)} className="text-gray-500 hover:text-gray-300">
                       <EyeOff size={16} />
                     </button>
                   </div>
+                  <div
+                    className="absolute top-0 right-0 bottom-0 w-1 cursor-col-resize"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const startX = e.pageX;
+                      const startWidth = e.target.parentElement.offsetWidth;
+                      const handleMouseMove = (mouseMoveEvent) => {
+                        const newWidth = startWidth + mouseMoveEvent.pageX - startX;
+                        handleColumnResize(index, Math.max(newWidth, 50));
+                      };
+                      const handleMouseUp = () => {
+                        document.removeEventListener('mousemove', handleMouseMove);
+                        document.removeEventListener('mouseup', handleMouseUp);
+                      };
+                      document.addEventListener('mousemove', handleMouseMove);
+                      document.addEventListener('mouseup', handleMouseUp);
+                    }}
+                  />
                 </th>
               ))}
             </tr>
@@ -221,7 +431,7 @@ export default function FPLPlayerStatsTable() {
                   <input
                     type="text"
                     onChange={(e) => handleFilter(column, e.target.value)}
-                    placeholder={`Filter ${column}`}
+                    placeholder={`Filter ${column} (>, <, =)`}
                     className="w-full bg-gray-700 text-gray-300 border border-gray-600 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-500"
                   />
                 </th>
@@ -229,10 +439,14 @@ export default function FPLPlayerStatsTable() {
             </tr>
           </thead>
           <tbody>
-            {sortedData.map((row, rowIndex) => (
+            {sortedAndFilteredData().map((row, rowIndex) => (
               <tr key={row.id} className={rowIndex % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}>
                 {visibleColumns.map((column) => (
-                  <td key={`${row.id}-${column}`} className="px-6 py-4 whitespace-nowrap border-b border-gray-700">
+                  <td
+                    key={`${row.id}-${column}`}
+                    className="px-6 py-4 whitespace-nowrap border-b border-gray-700 overflow-hidden text-ellipsis"
+                    style={{ minWidth: '100px', width: columnWidths[column] || 150 }}
+                  >
                     {typeof row[column] === 'number' ? row[column].toLocaleString() : row[column]}
                   </td>
                 ))}
