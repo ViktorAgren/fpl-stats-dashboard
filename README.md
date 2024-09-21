@@ -19,7 +19,8 @@ This project is a Fantasy Premier League (FPL) Stats Dashboard built with React.
 - React
 - Axios for API requests
 - Tailwind CSS for styling
-- Lucide React for icons
+- Lucide React
+- Flask app backend
 
 ## Setup and Installation
 
