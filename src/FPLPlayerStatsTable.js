@@ -216,9 +216,31 @@ export default function FPLPlayerStatsTable() {
     let result = applyFilters(data);
     if (sortColumn) {
       result.sort((a, b) => {
-        if (a[sortColumn] < b[sortColumn]) return sortDirection === 'asc' ? -1 : 1;
-        if (a[sortColumn] > b[sortColumn]) return sortDirection === 'asc' ? 1 : -1;
-        return 0;
+        const aValue = a[sortColumn];
+        const bValue = b[sortColumn];
+  
+        // Helper function to check if a value is a valid number (including decimals)
+        const isNumeric = (value) => {
+          if (typeof value === 'number') return true;
+          if (typeof value !== 'string') return false;
+          return !isNaN(parseFloat(value)) && isFinite(value);
+        };
+  
+        // Convert to numbers if possible
+        const aNum = isNumeric(aValue) ? parseFloat(aValue) : aValue;
+        const bNum = isNumeric(bValue) ? parseFloat(bValue) : bValue;
+  
+        if (isNumeric(aNum) && isNumeric(bNum)) {
+          // If both values are numeric, compare them as numbers
+          return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+        } else {
+          // If either value is not numeric, compare as strings
+          const aStr = String(aValue).toLowerCase();
+          const bStr = String(bValue).toLowerCase();
+          return sortDirection === 'asc' 
+            ? aStr.localeCompare(bStr, undefined, {numeric: true, sensitivity: 'base'})
+            : bStr.localeCompare(aStr, undefined, {numeric: true, sensitivity: 'base'});
+        }
       });
     }
     return result;
@@ -439,20 +461,20 @@ export default function FPLPlayerStatsTable() {
             </tr>
           </thead>
           <tbody>
-            {sortedAndFilteredData().map((row, rowIndex) => (
-              <tr key={row.id} className={rowIndex % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}>
-                {visibleColumns.map((column) => (
-                  <td
-                    key={`${row.id}-${column}`}
-                    className="px-6 py-4 whitespace-nowrap border-b border-gray-700 overflow-hidden text-ellipsis"
-                    style={{ minWidth: '100px', width: columnWidths[column] || 150 }}
-                  >
-                    {typeof row[column] === 'number' ? row[column].toLocaleString() : row[column]}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
+  {sortedAndFilteredData().map((row, rowIndex) => (
+    <tr key={row.id} className={rowIndex % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}>
+      {visibleColumns.map((column) => (
+        <td
+          key={`${row.id}-${column}`}
+          className="px-6 py-4 whitespace-nowrap border-b border-gray-700 overflow-hidden text-ellipsis"
+          style={{ minWidth: '100px', width: columnWidths[column] || 150 }}
+        >
+          {typeof row[column] === 'number' ? row[column].toLocaleString() : row[column]}
+        </td>
+      ))}
+    </tr>
+  ))}
+</tbody>
         </table>
       </div>
     </div>
