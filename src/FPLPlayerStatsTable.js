@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { EyeOff, Calculator, RefreshCw, Search, ChevronDown, ChevronUp } from 'lucide-react';
+import { EyeOff, Calculator, RefreshCw, Search, ChevronDown, ChevronUp, Table, Download, BarChart2, Filter } from 'lucide-react';
+
 
 export default function FPLPlayerStatsTable() {
   const [data, setData] = useState([]);
@@ -16,10 +17,11 @@ export default function FPLPlayerStatsTable() {
   const [columnSearch, setColumnSearch] = useState('');
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
-  const dropdownRef = useRef(null);
-  const autocompleteRef = useRef(null);
   const [columnWidths, setColumnWidths] = useState({});
   const [advancedFilters, setAdvancedFilters] = useState({});
+  const [showStats, setShowStats] = useState(false);
+  const dropdownRef = useRef(null);
+  const autocompleteRef = useRef(null);
   const tableRef = useRef(null);
   const formulaInputRef = useRef(null);
 
@@ -92,13 +94,50 @@ export default function FPLPlayerStatsTable() {
       if (validData.length > 0) {
         const columns = Object.keys(validData[0]);
         setAllColumns(columns);
-        setVisibleColumns(['first_name', "second_name", 'team_name', 'position', 'total_points', 'minutes', 'goals_scored', 'assists', 'clean_sheets']);
+        setVisibleColumns(['first_name', 'second_name', 'team_name', 'position', 'total_points', 'minutes', 'goals_scored', 'assists', 'clean_sheets']);
       }
     } catch (error) {
       console.error('Error fetching player data:', error);
       setError('Failed to fetch player data. Please try again later.');
     }
     setLoading(false);
+  };
+
+  const getColumnStats = useCallback((column) => {
+    const numericValues = data
+      .map(row => parseFloat(row[column]))
+      .filter(val => !isNaN(val));
+    
+    if (numericValues.length === 0) return null;
+    
+    return {
+      mean: (numericValues.reduce((a, b) => a + b, 0) / numericValues.length).toFixed(2),
+      median: numericValues.sort((a, b) => a - b)[Math.floor(numericValues.length / 2)].toFixed(2),
+      min: Math.min(...numericValues).toFixed(2),
+      max: Math.max(...numericValues).toFixed(2),
+      std: Math.sqrt(
+        numericValues.reduce((sq, n) => {
+          const diff = n - (numericValues.reduce((a, b) => a + b, 0) / numericValues.length);
+          return sq + diff * diff;
+        }, 0) / (numericValues.length - 1)
+      ).toFixed(2)
+    };
+  }, [data]);
+
+  const exportData = () => {
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + visibleColumns.join(",") + "\n"
+      + sortedAndFilteredData().map(row => 
+          visibleColumns.map(col => `"${row[col]}"`).join(",")
+        ).join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "player_analysis.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleSort = (column) => {
@@ -146,14 +185,6 @@ export default function FPLPlayerStatsTable() {
     return allColumns.filter(column => column.toLowerCase().startsWith(lastWord.toLowerCase()));
   };
 
-  const filteredData = data.filter((row) => {
-    return Object.keys(filters).every((column) => {
-      const cellValue = row[column]?.toString().toLowerCase() ?? '';
-      const filterValue = filters[column].toLowerCase();
-      return cellValue.includes(filterValue);
-    });
-  });
-
   const handleFormulaChange = (e) => {
     const cursorPosition = e.target.selectionStart;
     setNewColumnFormula(e.target.value);
@@ -180,7 +211,7 @@ export default function FPLPlayerStatsTable() {
       }, 0);
     }
   };
-  
+
   const handleAdvancedFilter = (column, type, value) => {
     setAdvancedFilters(prev => ({
       ...prev,
@@ -204,7 +235,7 @@ export default function FPLPlayerStatsTable() {
           return !isNaN(numericValue) && numericValue < threshold;
         } else if (filterValue.startsWith('=')) {
           const target = filterValue.slice(1);
-          return cellValue == target; // Using == for loose equality
+          return cellValue == target;
         } else {
           return String(cellValue).toLowerCase().includes(filterValue.toLowerCase());
         }
@@ -214,27 +245,24 @@ export default function FPLPlayerStatsTable() {
 
   const sortedAndFilteredData = useCallback(() => {
     let result = applyFilters(data);
+    
     if (sortColumn) {
       result.sort((a, b) => {
         const aValue = a[sortColumn];
         const bValue = b[sortColumn];
   
-        // Helper function to check if a value is a valid number (including decimals)
         const isNumeric = (value) => {
           if (typeof value === 'number') return true;
           if (typeof value !== 'string') return false;
           return !isNaN(parseFloat(value)) && isFinite(value);
         };
   
-        // Convert to numbers if possible
         const aNum = isNumeric(aValue) ? parseFloat(aValue) : aValue;
         const bNum = isNumeric(bValue) ? parseFloat(bValue) : bValue;
   
         if (isNumeric(aNum) && isNumeric(bNum)) {
-          // If both values are numeric, compare them as numbers
           return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
         } else {
-          // If either value is not numeric, compare as strings
           const aStr = String(aValue).toLowerCase();
           const bStr = String(bValue).toLowerCase();
           return sortDirection === 'asc' 
@@ -253,37 +281,6 @@ export default function FPLPlayerStatsTable() {
   const handleColumnResize = useCallback((index, newWidth) => {
     setColumnWidths(prev => ({ ...prev, [visibleColumns[index]]: Math.max(newWidth, 50) }));
   }, [visibleColumns]);
-  
-
-  const sortedData = [...filteredData].sort((a, b) => {
-    if (!sortColumn) return 0;
-    
-    const aValue = a[sortColumn];
-    const bValue = b[sortColumn];
-
-    // Helper function to check if a value is a valid number (including decimals)
-    const isNumeric = (value) => {
-      if (typeof value === 'number') return true;
-      if (typeof value !== 'string') return false;
-      return !isNaN(parseFloat(value)) && isFinite(value);
-    };
-
-    // Convert to numbers if possible
-    const aNum = isNumeric(aValue) ? parseFloat(aValue) : aValue;
-    const bNum = isNumeric(bValue) ? parseFloat(bValue) : bValue;
-
-    if (isNumeric(aNum) && isNumeric(bNum)) {
-      // If both values are numeric, compare them as numbers
-      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
-    } else {
-      // If either value is not numeric, compare as strings
-      const aStr = String(aValue).toLowerCase();
-      const bStr = String(bValue).toLowerCase();
-      return sortDirection === 'asc' 
-        ? aStr.localeCompare(bStr, undefined, {numeric: true, sensitivity: 'base'})
-        : bStr.localeCompare(aStr, undefined, {numeric: true, sensitivity: 'base'});
-    }
-  });
 
   useEffect(() => {
     const handleResize = () => {
@@ -310,7 +307,7 @@ export default function FPLPlayerStatsTable() {
   }, [visibleColumns, columnWidths]);
 
   if (loading) {
-    return <div className="text-white text-center py-10">Loading player data...</div>;
+    return <div className="text-slate-200 text-center py-10">Loading player data...</div>;
   }
 
   if (error) {
@@ -318,7 +315,7 @@ export default function FPLPlayerStatsTable() {
       <div className="text-red-500 text-center py-10">
         {error}
         <br />
-        <button onClick={fetchPlayerData} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded">
+        <button onClick={fetchPlayerData} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors">
           Retry
         </button>
       </div>
@@ -326,156 +323,223 @@ export default function FPLPlayerStatsTable() {
   }
 
   return (
-    <div className="p-4 bg-gray-900 text-gray-300">
-      <div className="mb-4 flex flex-wrap gap-4 items-center">
-        <div className="flex-grow relative" ref={dropdownRef}>
-          <button
-            onClick={() => setShowColumnDropdown(!showColumnDropdown)}
-            className="bg-gray-800 text-gray-300 border border-gray-700 rounded px-2 py-1 w-full text-left flex items-center justify-between"
-          >
-            <span>Show/Hide Columns</span>
-            <Search size={16} />
-          </button>
-          {showColumnDropdown && (
-            <div className="absolute z-10 mt-1 w-full bg-gray-800 border border-gray-700 rounded shadow-lg">
+    <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-xl">
+      <div className="p-6">
+        <div className="space-y-4">
+          {/* Control Panel */}
+          <div className="flex flex-wrap gap-4 items-center bg-slate-800 p-4 rounded-lg border border-slate-700">
+            <div className="flex-grow relative" ref={dropdownRef}>
+              <button
+                onClick={() => setShowColumnDropdown(!showColumnDropdown)}
+                className="bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 rounded-md px-3 py-2 w-full text-left flex items-center justify-between transition-colors"
+              >
+                <span className="flex items-center">
+                  <Table size={16} className="mr-2" />
+                  Variables Selection
+                </span>
+                <ChevronDown size={16} />
+              </button>
+              {showColumnDropdown && (
+                <div className="absolute z-10 mt-1 w-full bg-slate-800 border border-slate-700 rounded-lg shadow-xl">
+                  <div className="p-2 border-b border-slate-700">
+                    <input
+                      type="text"
+                      value={columnSearch}
+                      onChange={(e) => setColumnSearch(e.target.value)}
+                      placeholder="Search variables..."
+                      className="w-full bg-slate-700 text-slate-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="max-h-60 overflow-y-auto">
+                    {filteredColumns.map(column => (
+                      <div
+                        key={column}
+                        className="px-3 py-2 hover:bg-slate-700 cursor-pointer flex items-center"
+                        onClick={() => handleToggleColumn(column)}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={visibleColumns.includes(column)}
+                          onChange={() => {}}
+                          className="mr-2"
+                        />
+                        <span className="text-slate-200">{column}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Formula Creation */}
+            <div className="flex gap-2 flex-wrap">
               <input
                 type="text"
-                value={columnSearch}
-                onChange={(e) => setColumnSearch(e.target.value)}
-                placeholder="Search columns..."
-                className="w-full bg-gray-700 text-gray-300 border-b border-gray-600 rounded-t px-2 py-1"
+                value={newColumnName}
+                onChange={(e) => setNewColumnName(e.target.value)}
+                placeholder="New variable name"
+                className="bg-slate-700 text-slate-200 border border-slate-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <div className="max-h-60 overflow-y-auto">
-                {filteredColumns.map(column => (
-                  <div
-                    key={column}
-                    className="px-2 py-1 hover:bg-gray-700 cursor-pointer flex items-center"
-                    onClick={() => handleToggleColumn(column)}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={visibleColumns.includes(column)}
-                      onChange={() => {}}
-                      className="mr-2"
-                    />
-                    {column}
+              <div className="relative flex-grow" ref={autocompleteRef}>
+                <input
+                  ref={formulaInputRef}
+                  type="text"
+                  value={newColumnFormula}
+                  onChange={handleFormulaChange}
+                  onFocus={() => setShowAutocomplete(true)}
+                  placeholder="Formula (e.g., goals_scored / minutes * 90)"
+                  className="w-full bg-slate-700 text-slate-200 border border-slate-600 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {showAutocomplete && (
+                  <div className="absolute z-10 mt-1 w-full bg-slate-800 border border-slate-700 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                    {getFormulaAutocomplete(newColumnFormula).map(column => (
+                      <div
+                        key={column}
+                        className="px-3 py-2 hover:bg-slate-700 cursor-pointer text-slate-200"
+                        onClick={() => insertColumnName(column)}
+                      >
+                        {column}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
+              <button 
+                onClick={handleCreateColumn} 
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center transition-colors"
+              >
+                <Calculator size={16} className="mr-2" /> Create Variable
+              </button>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setShowStats(!showStats)} 
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md flex items-center transition-colors"
+              >
+                <BarChart2 size={16} className="mr-2" /> Toggle Stats
+              </button>
+              <button 
+                onClick={exportData} 
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md flex items-center transition-colors"
+              >
+                <Download size={16} className="mr-2" /> Export CSV
+              </button>
+              <button 
+                onClick={fetchPlayerData} 
+                className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-md flex items-center transition-colors"
+              >
+                <RefreshCw size={16} className="mr-2" /> Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Statistics Panel */}
+          {showStats && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-slate-800 p-4 rounded-lg border border-slate-700">
+              {visibleColumns.map(column => {
+                const stats = getColumnStats(column);
+                if (!stats) return null;
+                return (
+                  <div key={`stats-${column}`} className="bg-slate-700 p-4 rounded-lg">
+                    <h3 className="text-slate-200 font-medium mb-2">{column}</h3>
+                    <div className="space-y-1 text-sm">
+                      <p className="text-slate-300">Mean: {stats.mean}</p>
+                      <p className="text-slate-300">Median: {stats.median}</p>
+                      <p className="text-slate-300">Min: {stats.min}</p>
+                      <p className="text-slate-300">Max: {stats.max}</p>
+                      <p className="text-slate-300">Std Dev: {stats.std}</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
-        </div>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newColumnName}
-            onChange={(e) => setNewColumnName(e.target.value)}
-            placeholder="New column name"
-            className="bg-gray-800 text-gray-300 border border-gray-700 rounded px-2 py-1"
-          />
-          <div className="relative" ref={autocompleteRef}>
-            <input
-              ref={formulaInputRef}
-              type="text"
-              value={newColumnFormula}
-              onChange={handleFormulaChange}
-              onFocus={() => setShowAutocomplete(true)}
-              placeholder="Column formula (e.g., goals_scored * 4)"
-              className="bg-gray-800 text-gray-300 border border-gray-700 rounded px-2 py-1"
-            />
-            {showAutocomplete && (
-              <div className="absolute z-10 mt-1 w-full bg-gray-800 border border-gray-700 rounded shadow-lg max-h-40 overflow-y-auto">
-                {getFormulaAutocomplete(newColumnFormula).map(column => (
-                  <div
-                    key={column}
-                    className="px-2 py-1 hover:bg-gray-700 cursor-pointer"
-                    onClick={() => insertColumnName(column)}
+
+          {/* Data Table */}
+          <div className="overflow-x-auto rounded-lg border border-slate-700" ref={tableRef}>
+            <table className="min-w-full border-collapse">
+              <thead>
+                <tr>
+                  {visibleColumns.map((column, index) => (
+                    <th
+                      key={column}
+                      className="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider cursor-pointer bg-slate-800 border-b border-slate-700 relative"
+                      style={{ minWidth: '100px', width: columnWidths[column] || 150 }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span onClick={() => handleSort(column)} className="flex items-center">
+                          {column}
+                          {sortColumn === column && (
+                            sortDirection === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />
+                          )}
+                        </span>
+                        <button onClick={() => handleToggleColumn(column)} className="text-slate-500 hover:text-slate-300">
+                          <EyeOff size={16} />
+                        </button>
+                      </div>
+                      <div
+                        className="absolute top-0 right-0 bottom-0 w-1 cursor-col-resize"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          const startX = e.pageX;
+                          const startWidth = e.target.parentElement.offsetWidth;
+                          const handleMouseMove = (mouseMoveEvent) => {
+                            const newWidth = startWidth + mouseMoveEvent.pageX - startX;
+                            handleColumnResize(index, Math.max(newWidth, 50));
+                          };
+                          const handleMouseUp = () => {
+                            document.removeEventListener('mousemove', handleMouseMove);
+                            document.removeEventListener('mouseup', handleMouseUp);
+                          };
+                          document.addEventListener('mousemove', handleMouseMove);
+                          document.addEventListener('mouseup', handleMouseUp);
+                        }}
+                      />
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  {visibleColumns.map((column) => (
+                    <th key={`filter-${column}`} className="px-6 py-2 bg-slate-800 border-b border-slate-700">
+                      <div className="relative">
+                        <Filter size={16} className="absolute left-3 top-2.5 text-slate-400" />
+                        <input
+                          type="text"
+                          onChange={(e) => handleFilter(column, e.target.value)}
+                          placeholder="Filter... (>, <, =)"
+                          className="w-full bg-slate-700 text-slate-300 border border-slate-600 rounded-md pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedAndFilteredData().map((row, rowIndex) => (
+                  <tr 
+                    key={row.id} 
+                    className={`
+                      ${rowIndex % 2 === 0 ? 'bg-slate-800' : 'bg-slate-750'} 
+                      hover:bg-slate-700 transition-colors
+                    `}
                   >
-                    {column}
-                  </div>
+                    {visibleColumns.map((column) => (
+                      <td
+                        key={`${row.id}-${column}`}
+                        className="px-6 py-4 whitespace-nowrap border-b border-slate-700 text-slate-300"
+                        style={{ minWidth: '100px', width: columnWidths[column] || 150 }}
+                      >
+                        {typeof row[column] === 'number' ? row[column].toLocaleString() : row[column]}
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </div>
-            )}
+              </tbody>
+            </table>
           </div>
-          <button onClick={handleCreateColumn} className="bg-green-600 text-white px-2 py-1 rounded flex items-center">
-            <Calculator size={16} className="mr-1" /> Create Column
-          </button>
         </div>
-        <button onClick={fetchPlayerData} className="bg-blue-600 text-white px-2 py-1 rounded flex items-center">
-          <RefreshCw size={16} className="mr-1" /> Refresh Data
-        </button>
-      </div>
-      <div className="overflow-x-auto" ref={tableRef}>
-        <table className="min-w-full border-collapse">
-          <thead>
-            <tr>
-              {visibleColumns.map((column, index) => (
-                <th
-                  key={column}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer bg-gray-800 border-b border-gray-700 relative"
-                  style={{ minWidth: '100px', width: columnWidths[column] || 150 }}
-                >
-                  <div className="flex items-center justify-between">
-                    <span onClick={() => handleSort(column)} className="flex items-center">
-                      {column}
-                      {sortColumn === column && (
-                        sortDirection === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />
-                      )}
-                    </span>
-                    <button onClick={() => handleToggleColumn(column)} className="text-gray-500 hover:text-gray-300">
-                      <EyeOff size={16} />
-                    </button>
-                  </div>
-                  <div
-                    className="absolute top-0 right-0 bottom-0 w-1 cursor-col-resize"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      const startX = e.pageX;
-                      const startWidth = e.target.parentElement.offsetWidth;
-                      const handleMouseMove = (mouseMoveEvent) => {
-                        const newWidth = startWidth + mouseMoveEvent.pageX - startX;
-                        handleColumnResize(index, Math.max(newWidth, 50));
-                      };
-                      const handleMouseUp = () => {
-                        document.removeEventListener('mousemove', handleMouseMove);
-                        document.removeEventListener('mouseup', handleMouseUp);
-                      };
-                      document.addEventListener('mousemove', handleMouseMove);
-                      document.addEventListener('mouseup', handleMouseUp);
-                    }}
-                  />
-                </th>
-              ))}
-            </tr>
-            <tr>
-              {visibleColumns.map((column) => (
-                <th key={`filter-${column}`} className="px-6 py-2 bg-gray-800 border-b border-gray-700">
-                  <input
-                    type="text"
-                    onChange={(e) => handleFilter(column, e.target.value)}
-                    placeholder={`Filter ${column} (>, <, =)`}
-                    className="w-full bg-gray-700 text-gray-300 border border-gray-600 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-500"
-                  />
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-  {sortedAndFilteredData().map((row, rowIndex) => (
-    <tr key={row.id} className={rowIndex % 2 === 0 ? 'bg-gray-800' : 'bg-gray-750'}>
-      {visibleColumns.map((column) => (
-        <td
-          key={`${row.id}-${column}`}
-          className="px-6 py-4 whitespace-nowrap border-b border-gray-700 overflow-hidden text-ellipsis"
-          style={{ minWidth: '100px', width: columnWidths[column] || 150 }}
-        >
-          {typeof row[column] === 'number' ? row[column].toLocaleString() : row[column]}
-        </td>
-      ))}
-    </tr>
-  ))}
-</tbody>
-        </table>
       </div>
     </div>
   );
