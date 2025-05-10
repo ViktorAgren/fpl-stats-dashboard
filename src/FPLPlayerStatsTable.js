@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { EyeOff, Calculator, RefreshCw, Search, ChevronDown, ChevronUp, Table, Download, BarChart2, Filter } from 'lucide-react';
-
+import { EyeOff, Calculator, RefreshCw, ChevronDown, ChevronUp, Table, Download, Filter } from 'lucide-react';
 
 export default function FPLPlayerStatsTable() {
   const [data, setData] = useState([]);
@@ -18,34 +17,176 @@ export default function FPLPlayerStatsTable() {
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [columnWidths, setColumnWidths] = useState({});
-  const [advancedFilters, setAdvancedFilters] = useState({});
-  const [showStats, setShowStats] = useState(false);
+  // State declarations
   const dropdownRef = useRef(null);
   const autocompleteRef = useRef(null);
   const tableRef = useRef(null);
   const formulaInputRef = useRef(null);
 
-  useEffect(() => {
-    fetchPlayerData();
+  const handleSort = useCallback((column) => {
+    setSortColumn(prev => {
+      if (prev === column) {
+        setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+        return column;
+      } else {
+        setSortDirection('asc');
+        return column;
+      }
+    });
   }, []);
 
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowColumnDropdown(false);
-      }
-      if (autocompleteRef.current && !autocompleteRef.current.contains(event.target)) {
-        setShowAutocomplete(false);
+  const handleFilter = useCallback((column, value) => {
+    setFilters(prev => ({ ...prev, [column]: value }));
+  }, []);
+
+  const handleToggleColumn = useCallback((column) => {
+    setVisibleColumns(prev => 
+      prev.includes(column) 
+        ? prev.filter(col => col !== column)
+        : [...prev, column]
+    );
+  }, []);
+
+  const applyFilters = useCallback((dataToFilter) => {
+    return dataToFilter.filter(row => {
+      return Object.entries(filters).every(([column, filterValue]) => {
+        if (!filterValue) return true;
+        
+        const cellValue = row[column];
+        const numericValue = parseFloat(cellValue);
+  
+        if (filterValue.startsWith('>')) {
+          const threshold = parseFloat(filterValue.slice(1));
+          return !isNaN(numericValue) && numericValue > threshold;
+        } else if (filterValue.startsWith('<')) {
+          const threshold = parseFloat(filterValue.slice(1));
+          return !isNaN(numericValue) && numericValue < threshold;
+        } else if (filterValue.startsWith('=')) {
+          const target = filterValue.slice(1);
+          return cellValue === target;
+        } else {
+          return String(cellValue).toLowerCase().includes(filterValue.toLowerCase());
+        }
+      });
+    });
+  }, [filters]);
+
+  const sortedAndFilteredData = useCallback(() => {
+    let result = applyFilters(data);
+    
+    if (sortColumn) {
+      result.sort((a, b) => {
+        const aValue = a[sortColumn];
+        const bValue = b[sortColumn];
+  
+        const isNumeric = (value) => {
+          if (typeof value === 'number') return true;
+          if (typeof value !== 'string') return false;
+          return !isNaN(parseFloat(value)) && isFinite(value);
+        };
+  
+        const aNum = isNumeric(aValue) ? parseFloat(aValue) : aValue;
+        const bNum = isNumeric(bValue) ? parseFloat(bValue) : bValue;
+  
+        if (isNumeric(aNum) && isNumeric(bNum)) {
+          return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+        } else {
+          const aStr = String(aValue).toLowerCase();
+          const bStr = String(bValue).toLowerCase();
+          return sortDirection === 'asc' 
+            ? aStr.localeCompare(bStr, undefined, {numeric: true, sensitivity: 'base'})
+            : bStr.localeCompare(aStr, undefined, {numeric: true, sensitivity: 'base'});
+        }
+      });
+    }
+    return result;
+  }, [data, sortColumn, sortDirection, applyFilters]);
+
+  const exportData = useCallback(() => {
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + visibleColumns.join(",") + "\n"
+      + sortedAndFilteredData().map(row => 
+          visibleColumns.map(col => `"${row[col]}"`).join(",")
+        ).join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "player_analysis.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [visibleColumns, sortedAndFilteredData]);
+
+  const handleCreateColumn = useCallback(() => {
+    if (newColumnName && newColumnFormula && !allColumns.includes(newColumnName)) {
+      try {
+        // Using eval indirectly via Function constructor is necessary for the custom formula feature
+        // eslint-disable-next-line no-new-func
+        setData(prevData => {
+          return prevData.map(row => {
+            // eslint-disable-next-line no-new-func
+            const result = new Function(...allColumns, `return ${newColumnFormula}`)(...allColumns.map(col => row[col]));
+            return { ...row, [newColumnName]: result };
+          });
+        });
+        
+        setAllColumns(prev => [...prev, newColumnName]);
+        setVisibleColumns(prev => [...prev, newColumnName]);
+        setNewColumnName('');
+        setNewColumnFormula('');
+      } catch (error) {
+        console.error('Invalid formula:', error);
+        alert('Invalid formula. Please check and try again.');
       }
     }
+  }, [newColumnName, newColumnFormula, allColumns]);
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+  const getFormulaAutocomplete = useCallback((formula) => {
+    const lastWord = formula.split(/[\s+\-*/()]+/).pop();
+    return allColumns.filter(column => column.toLowerCase().startsWith(lastWord.toLowerCase()));
+  }, [allColumns]);
+
+  const handleFormulaChange = useCallback((e) => {
+    const cursorPosition = e.target.selectionStart;
+    setNewColumnFormula(e.target.value);
+    setShowAutocomplete(true);
+    setTimeout(() => {
+      if (formulaInputRef.current) {
+        formulaInputRef.current.setSelectionRange(cursorPosition, cursorPosition);
+      }
+    }, 0);
   }, []);
 
-  const fetchPlayerData = async () => {
+  const insertColumnName = useCallback((columnName) => {
+    if (formulaInputRef.current) {
+      const cursorPosition = formulaInputRef.current.selectionStart;
+      const textBeforeCursor = newColumnFormula.slice(0, cursorPosition);
+      const textAfterCursor = newColumnFormula.slice(cursorPosition);
+      const updatedFormula = `${textBeforeCursor}${columnName}${textAfterCursor}`;
+      setNewColumnFormula(updatedFormula);
+      setShowAutocomplete(false);
+      setTimeout(() => {
+        const newCursorPosition = cursorPosition + columnName.length;
+        formulaInputRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
+        formulaInputRef.current.focus();
+      }, 0);
+    }
+  }, [newColumnFormula]);
+
+  // Function declarations
+
+  const filteredColumns = useCallback(() => {
+    return allColumns.filter(column => 
+      column.toLowerCase().includes(columnSearch.toLowerCase())
+    );
+  }, [allColumns, columnSearch]);
+
+  const handleColumnResize = useCallback((index, newWidth) => {
+    setColumnWidths(prev => ({ ...prev, [visibleColumns[index]]: Math.max(newWidth, 50) }));
+  }, [visibleColumns]);
+
+  const fetchPlayerData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -101,186 +242,27 @@ export default function FPLPlayerStatsTable() {
       setError('Failed to fetch player data. Please try again later.');
     }
     setLoading(false);
-  };
+  }, []);
 
-  const getColumnStats = useCallback((column) => {
-    const numericValues = data
-      .map(row => parseFloat(row[column]))
-      .filter(val => !isNaN(val));
-    
-    if (numericValues.length === 0) return null;
-    
-    return {
-      mean: (numericValues.reduce((a, b) => a + b, 0) / numericValues.length).toFixed(2),
-      median: numericValues.sort((a, b) => a - b)[Math.floor(numericValues.length / 2)].toFixed(2),
-      min: Math.min(...numericValues).toFixed(2),
-      max: Math.max(...numericValues).toFixed(2),
-      std: Math.sqrt(
-        numericValues.reduce((sq, n) => {
-          const diff = n - (numericValues.reduce((a, b) => a + b, 0) / numericValues.length);
-          return sq + diff * diff;
-        }, 0) / (numericValues.length - 1)
-      ).toFixed(2)
+  useEffect(() => {
+    fetchPlayerData();
+  }, [fetchPlayerData]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowColumnDropdown(false);
+      }
+      if (autocompleteRef.current && !autocompleteRef.current.contains(event.target)) {
+        setShowAutocomplete(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [data]);
-
-  const exportData = () => {
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + visibleColumns.join(",") + "\n"
-      + sortedAndFilteredData().map(row => 
-          visibleColumns.map(col => `"${row[col]}"`).join(",")
-        ).join("\n");
-    
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "player_analysis.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleSort = (column) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('asc');
-    }
-  };
-
-  const handleFilter = (column, value) => {
-    setFilters(prev => ({ ...prev, [column]: value }));
-  };
-
-  const handleToggleColumn = (column) => {
-    if (visibleColumns.includes(column)) {
-      setVisibleColumns(visibleColumns.filter(col => col !== column));
-    } else {
-      setVisibleColumns([...visibleColumns, column]);
-    }
-  };
-
-  const handleCreateColumn = () => {
-    if (newColumnName && newColumnFormula && !allColumns.includes(newColumnName)) {
-      try {
-        const newData = data.map(row => {
-          const result = new Function(...allColumns, `return ${newColumnFormula}`)(...allColumns.map(col => row[col]));
-          return { ...row, [newColumnName]: result };
-        });
-        setData(newData);
-        setAllColumns([...allColumns, newColumnName]);
-        setVisibleColumns([...visibleColumns, newColumnName]);
-        setNewColumnName('');
-        setNewColumnFormula('');
-      } catch (error) {
-        console.error('Invalid formula:', error);
-        alert('Invalid formula. Please check and try again.');
-      }
-    }
-  };
-
-  const getFormulaAutocomplete = (formula) => {
-    const lastWord = formula.split(/[\s+\-*/()]+/).pop();
-    return allColumns.filter(column => column.toLowerCase().startsWith(lastWord.toLowerCase()));
-  };
-
-  const handleFormulaChange = (e) => {
-    const cursorPosition = e.target.selectionStart;
-    setNewColumnFormula(e.target.value);
-    setShowAutocomplete(true);
-    setTimeout(() => {
-      if (formulaInputRef.current) {
-        formulaInputRef.current.setSelectionRange(cursorPosition, cursorPosition);
-      }
-    }, 0);
-  };
-
-  const insertColumnName = (columnName) => {
-    if (formulaInputRef.current) {
-      const cursorPosition = formulaInputRef.current.selectionStart;
-      const textBeforeCursor = newColumnFormula.slice(0, cursorPosition);
-      const textAfterCursor = newColumnFormula.slice(cursorPosition);
-      const updatedFormula = `${textBeforeCursor}${columnName}${textAfterCursor}`;
-      setNewColumnFormula(updatedFormula);
-      setShowAutocomplete(false);
-      setTimeout(() => {
-        const newCursorPosition = cursorPosition + columnName.length;
-        formulaInputRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-        formulaInputRef.current.focus();
-      }, 0);
-    }
-  };
-
-  const handleAdvancedFilter = (column, type, value) => {
-    setAdvancedFilters(prev => ({
-      ...prev,
-      [column]: { ...prev[column], [type]: value }
-    }));
-  };
-
-  const applyFilters = useCallback((data) => {
-    return data.filter(row => {
-      return Object.entries(filters).every(([column, filterValue]) => {
-        if (!filterValue) return true;
-        
-        const cellValue = row[column];
-        const numericValue = parseFloat(cellValue);
-  
-        if (filterValue.startsWith('>')) {
-          const threshold = parseFloat(filterValue.slice(1));
-          return !isNaN(numericValue) && numericValue > threshold;
-        } else if (filterValue.startsWith('<')) {
-          const threshold = parseFloat(filterValue.slice(1));
-          return !isNaN(numericValue) && numericValue < threshold;
-        } else if (filterValue.startsWith('=')) {
-          const target = filterValue.slice(1);
-          return cellValue == target;
-        } else {
-          return String(cellValue).toLowerCase().includes(filterValue.toLowerCase());
-        }
-      });
-    });
-  }, [filters]);
-
-  const sortedAndFilteredData = useCallback(() => {
-    let result = applyFilters(data);
-    
-    if (sortColumn) {
-      result.sort((a, b) => {
-        const aValue = a[sortColumn];
-        const bValue = b[sortColumn];
-  
-        const isNumeric = (value) => {
-          if (typeof value === 'number') return true;
-          if (typeof value !== 'string') return false;
-          return !isNaN(parseFloat(value)) && isFinite(value);
-        };
-  
-        const aNum = isNumeric(aValue) ? parseFloat(aValue) : aValue;
-        const bNum = isNumeric(bValue) ? parseFloat(bValue) : bValue;
-  
-        if (isNumeric(aNum) && isNumeric(bNum)) {
-          return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
-        } else {
-          const aStr = String(aValue).toLowerCase();
-          const bStr = String(bValue).toLowerCase();
-          return sortDirection === 'asc' 
-            ? aStr.localeCompare(bStr, undefined, {numeric: true, sensitivity: 'base'})
-            : bStr.localeCompare(aStr, undefined, {numeric: true, sensitivity: 'base'});
-        }
-      });
-    }
-    return result;
-  }, [data, sortColumn, sortDirection, applyFilters]);
-
-  const filteredColumns = allColumns.filter(column => 
-    column.toLowerCase().includes(columnSearch.toLowerCase())
-  );
-
-  const handleColumnResize = useCallback((index, newWidth) => {
-    setColumnWidths(prev => ({ ...prev, [visibleColumns[index]]: Math.max(newWidth, 50) }));
-  }, [visibleColumns]);
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -351,7 +333,7 @@ export default function FPLPlayerStatsTable() {
                     />
                   </div>
                   <div className="max-h-60 overflow-y-auto">
-                    {filteredColumns.map(column => (
+                    {filteredColumns().map(column => (
                       <div
                         key={column}
                         className="px-3 py-2 hover:bg-slate-700 cursor-pointer flex items-center"
@@ -415,12 +397,6 @@ export default function FPLPlayerStatsTable() {
             {/* Action Buttons */}
             <div className="flex gap-2">
               <button 
-                onClick={() => setShowStats(!showStats)} 
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md flex items-center transition-colors"
-              >
-                <BarChart2 size={16} className="mr-2" /> Toggle Stats
-              </button>
-              <button 
                 onClick={exportData} 
                 className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md flex items-center transition-colors"
               >
@@ -434,28 +410,6 @@ export default function FPLPlayerStatsTable() {
               </button>
             </div>
           </div>
-
-          {/* Statistics Panel */}
-          {showStats && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-slate-800 p-4 rounded-lg border border-slate-700">
-              {visibleColumns.map(column => {
-                const stats = getColumnStats(column);
-                if (!stats) return null;
-                return (
-                  <div key={`stats-${column}`} className="bg-slate-700 p-4 rounded-lg">
-                    <h3 className="text-slate-200 font-medium mb-2">{column}</h3>
-                    <div className="space-y-1 text-sm">
-                      <p className="text-slate-300">Mean: {stats.mean}</p>
-                      <p className="text-slate-300">Median: {stats.median}</p>
-                      <p className="text-slate-300">Min: {stats.min}</p>
-                      <p className="text-slate-300">Max: {stats.max}</p>
-                      <p className="text-slate-300">Std Dev: {stats.std}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
 
           {/* Data Table */}
           <div className="overflow-x-auto rounded-lg border border-slate-700" ref={tableRef}>
