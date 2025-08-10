@@ -1,5 +1,7 @@
 # Fantasy Premier League Stats Dashboard
 
+![Dashboard Screenshot](docs/images/dashboard.png)
+
 ## Overview
 
 This project is a Fantasy Premier League (FPL) Stats Dashboard built with React. It provides an interactive and customizable interface for viewing and analyzing player statistics from the Fantasy Premier League.
