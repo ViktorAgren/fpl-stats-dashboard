@@ -10,9 +10,12 @@ This project is a Fantasy Premier League (FPL) Stats Dashboard built with React.
 - **Interactive Table**: Displays player statistics in a dynamic, sortable, and filterable table.
 - **Custom Columns**: Allows users to create custom columns using mathematical formulas based on existing data.
 - **Column Management**: Users can show/hide columns and reorder them as needed.
-- **Advanced Filtering**: Supports complex filtering options, including greater than, less than, and equal to operations.
+- **Filtering**: Supports complex filtering options, including greater than, less than, and equal to operations.
+- **Row Selection**: Select multiple players with checkboxes for comparison or export.
+- **Pagination**: Navigate through data with configurable page sizes.
+- **Keyboard Shortcuts**: Quick actions with Ctrl+A (select all), Ctrl+E (export), Ctrl+R (refresh).
+- **CSV Export**: Export filtered data or selected players to CSV files.
 - **Responsive Design**: Adapts to different screen sizes with resizable columns and a horizontal scroll for smaller devices.
-- **Performance Optimized**: Utilizes React's useMemo and useCallback for efficient rendering and calculations.
 
 ## Technologies Used
 
@@ -50,9 +53,12 @@ This project is a Fantasy Premier League (FPL) Stats Dashboard built with React.
 
 - **Sorting**: Click on column headers to sort the data.
 - **Filtering**: Use the input fields below column headers to filter data. You can use >, <, and = for numeric comparisons.
-- **Show/Hide Columns**: Click the "Show/Hide Columns" dropdown to select which columns to display.
+- **Show/Hide Columns**: Click the "Variables Selection" dropdown to select which columns to display.
 - **Create Custom Column**: Enter a column name and a formula (e.g., `goals_scored * 4`) to create a new column.
 - **Resize Columns**: Drag the edge of a column header to resize it.
+- **Row Selection**: Click checkboxes to select players, or use Ctrl+A to select all visible players.
+- **Export Data**: Use the Export button or Ctrl+E to download data as CSV. Selected players will be exported if any are selected.
+- **Pagination**: Use page size dropdown and navigation buttons to browse through data.
 
 ## API
 
