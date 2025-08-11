@@ -8,24 +8,13 @@ This project is a Fantasy Premier League (FPL) Stats Dashboard built with React.
 
 ## Features
 
-- **Data Fetching**: Retrieves real-time data from the official FPL API.
-- **Interactive Table**: Displays player statistics in a dynamic, sortable, and filterable table.
-- **Custom Columns**: Allows users to create custom columns using mathematical formulas based on existing data.
+- **Data Fetching**: Retrieves data from the official FPL API.
+- **Interactive Table**: Displays player statistics in table.
+- **Custom Columns**: Allows users to create custom columns using formulas.
 - **Column Management**: Users can show/hide columns and reorder them as needed.
-- **Filtering**: Supports complex filtering options, including greater than, less than, and equal to operations.
+- **Filtering**: Supports filtering options, including greater than, less than, and equal to operations.
 - **Row Selection**: Select multiple players with checkboxes for comparison or export.
-- **Pagination**: Navigate through data with configurable page sizes.
-- **Keyboard Shortcuts**: Quick actions with Ctrl+A (select all), Ctrl+E (export), Ctrl+R (refresh).
 - **CSV Export**: Export filtered data or selected players to CSV files.
-- **Responsive Design**: Adapts to different screen sizes with resizable columns and a horizontal scroll for smaller devices.
-
-## Technologies Used
-
-- React
-- Axios for API requests
-- Tailwind CSS for styling
-- Lucide React
-- Flask app backend
 
 ## Setup and Installation
 
